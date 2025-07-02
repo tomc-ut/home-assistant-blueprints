@@ -1,0 +1,14 @@
+# Home Assistant stuff
+secrets.yaml
+*.db
+*.log
+*.bak
+*.swp
+
+# OS clutter
+.DS_Store
+Thumbs.db
+
+# Python cache (if you use scripts)
+__pycache__/
+*.pyc
