@@ -11,6 +11,7 @@ blueprint:
 
     On Home Assistant restart, after a 5-minute delay, it will check and restore the correct state.
   domain: automation
+  version: 1
   input:
     outlet:
       name: Outlet Switch
