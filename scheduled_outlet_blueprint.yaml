@@ -1,6 +1,8 @@
 blueprint:
   name: Scheduled Outlet
   description: >
+    **Version: 1.0.0**
+    
     Turns a switch ON and OFF based on two time schedules.
     Each schedule includes:
       - Month-day start and end (e.g., 05-01 to 09-30)
@@ -11,7 +13,6 @@ blueprint:
 
     On Home Assistant restart, after a 5-minute delay, it will check and restore the correct state.
   domain: automation
-  version: 1
   input:
     outlet:
       name: Outlet Switch
