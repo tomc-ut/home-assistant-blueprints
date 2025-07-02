@@ -1,0 +1,179 @@
+blueprint:
+  name: Scheduled Outlet with Date and Day Ranges + Recovery
+  description: >
+    Turns a switch ON and OFF based on two time schedules.
+    Each schedule includes:
+      - Start and end date range
+      - Days of the week
+      - Off and on times
+
+    The outlet defaults to ON and will turn OFF only during active timer windows.
+
+    On Home Assistant restart, after a 5-minute delay, it will check and restore the correct state.
+  domain: automation
+  input:
+    outlet:
+      name: Outlet Switch
+      selector:
+        entity:
+          domain: switch
+
+    # --- Time Set 1 ---
+    set1_start_date:
+      name: Set 1 - Start Date
+      selector:
+        date:
+    set1_end_date:
+      name: Set 1 - End Date
+      selector:
+        date:
+    set1_days:
+      name: Set 1 - Days of Week
+      selector:
+        select:
+          options:
+            - Monday
+            - Tuesday
+            - Wednesday
+            - Thursday
+            - Friday
+            - Saturday
+            - Sunday
+          multiple: true
+    set1_off_time:
+      name: Set 1 - Turn OFF Time
+      selector:
+        time:
+    set1_on_time:
+      name: Set 1 - Turn ON Time
+      selector:
+        time:
+
+    # --- Time Set 2 ---
+    set2_start_date:
+      name: Set 2 - Start Date
+      selector:
+        date:
+    set2_end_date:
+      name: Set 2 - End Date
+      selector:
+        date:
+    set2_days:
+      name: Set 2 - Days of Week
+      selector:
+        select:
+          options:
+            - Monday
+            - Tuesday
+            - Wednesday
+            - Thursday
+            - Friday
+            - Saturday
+            - Sunday
+          multiple: true
+    set2_off_time:
+      name: Set 2 - Turn OFF Time
+      selector:
+        time:
+    set2_on_time:
+      name: Set 2 - Turn ON Time
+      selector:
+        time:
+
+trigger:
+  - platform: time
+    at: !input set1_off_time
+    id: set1_off
+
+  - platform: time
+    at: !input set1_on_time
+    id: set1_on
+
+  - platform: time
+    at: !input set2_off_time
+    id: set2_off
+
+  - platform: time
+    at: !input set2_on_time
+    id: set2_on
+
+  - platform: homeassistant
+    event: start
+    id: startup
+
+variables:
+  now: "{{ now() }}"
+  today_date: "{{ now().date() }}"
+  today_weekday: "{{ now().strftime('%A') }}"
+  current_time: "{{ now().strftime('%H:%M') }}"
+
+  set1_active: >-
+    {{ (today_date >= (strptime(blueprint.input.set1_start_date, '%Y-%m-%d').date()))
+        and (today_date <= (strptime(blueprint.input.set1_end_date, '%Y-%m-%d').date()))
+        and (today_weekday in blueprint.input.set1_days) }}
+  in_set1_off_window: >-
+    {{ set1_active and (blueprint.input.set1_off_time <= current_time < blueprint.input.set1_on_time) }}
+
+  set2_active: >-
+    {{ (today_date >= (strptime(blueprint.input.set2_start_date, '%Y-%m-%d').date()))
+        and (today_date <= (strptime(blueprint.input.set2_end_date, '%Y-%m-%d').date()))
+        and (today_weekday in blueprint.input.set2_days) }}
+  in_set2_off_window: >-
+    {{ set2_active and (blueprint.input.set2_off_time <= current_time < blueprint.input.set2_on_time) }}
+
+action:
+  - choose:
+      - conditions:
+          - condition: trigger
+            id: startup
+        sequence:
+          - delay: "00:05:00"
+          - choose:
+              - conditions:
+                  - condition: template
+                    value_template: "{{ in_set1_off_window or in_set2_off_window }}"
+                sequence:
+                  - service: switch.turn_off
+                    target:
+                      entity_id: !input outlet
+              - conditions:
+                  - condition: template
+                    value_template: "{{ not in_set1_off_window and not in_set2_off_window }}"
+                sequence:
+                  - service: switch.turn_on
+                    target:
+                      entity_id: !input outlet
+
+      - conditions:
+          - condition: template
+            value_template: "{{ trigger.id == 'set1_off' and set1_active }}"
+        sequence:
+          - service: switch.turn_off
+            target:
+              entity_id: !input outlet
+
+      - conditions:
+          - condition: template
+            value_template: "{{ trigger.id == 'set1_on' and set1_active }}"
+        sequence:
+          - service: switch.turn_on
+            target:
+              entity_id: !input outlet
+
+      - conditions:
+          - condition: template
+            value_template: "{{ trigger.id == 'set2_off' and set2_active }}"
+        sequence:
+          - service: switch.turn_off
+            target:
+              entity_id: !input outlet
+
+      - conditions:
+          - condition: template
+            value_template: "{{ trigger.id == 'set2_on' and set2_active }}"
+        sequence:
+          - service: switch.turn_on
+            target:
+              entity_id: !input outlet
+
+mode: single
