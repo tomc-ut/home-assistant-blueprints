@@ -1,9 +1,9 @@
 blueprint:
-  name: Scheduled Outlet Change
+  name: Scheduled Outlet with Month-Day Ranges + Recovery
   description: >
     Turns a switch ON and OFF based on two time schedules.
     Each schedule includes:
-      - Start and end date range
+      - Month-day start and end (e.g., 05-01 to 09-30)
       - Days of the week
       - Off and on times
 
@@ -19,14 +19,14 @@ blueprint:
           domain: switch
 
     # --- Time Set 1 ---
-    set1_start_date:
-      name: Set 1 - Start Date
+    set1_start_md:
+      name: Set 1 - Start (MM-DD)
       selector:
-        date:
-    set1_end_date:
-      name: Set 1 - End Date
+        text:
+    set1_end_md:
+      name: Set 1 - End (MM-DD)
       selector:
-        date:
+        text:
     set1_days:
       name: Set 1 - Days of Week
       selector:
@@ -50,14 +50,14 @@ blueprint:
         time:
 
     # --- Time Set 2 ---
-    set2_start_date:
-      name: Set 2 - Start Date
+    set2_start_md:
+      name: Set 2 - Start (MM-DD)
       selector:
-        date:
-    set2_end_date:
-      name: Set 2 - End Date
+        text:
+    set2_end_md:
+      name: Set 2 - End (MM-DD)
       selector:
-        date:
+        text:
     set2_days:
       name: Set 2 - Days of Week
       selector:
@@ -107,17 +107,36 @@ variables:
   today_weekday: "{{ now().strftime('%A') }}"
   current_time: "{{ now().strftime('%H:%M') }}"
 
+  # Parse start and end using current year and handle wrap-around logic
+  set1_start_date: >-
+    {{ (now().year|string) ~ '-' ~ blueprint.input.set1_start_md }}
+  set1_end_date: >-
+    {{ (now().year|string) ~ '-' ~ blueprint.input.set1_end_md }}
   set1_active: >-
-    {{ (today_date >= (strptime(blueprint.input.set1_start_date, '%Y-%m-%d').date()))
-        and (today_date <= (strptime(blueprint.input.set1_end_date, '%Y-%m-%d').date()))
-        and (today_weekday in blueprint.input.set1_days) }}
+    {% set today = now().date() %}
+    {% set start = strptime(set1_start_date, '%Y-%m-%d').date() %}
+    {% set end = strptime(set1_end_date, '%Y-%m-%d').date() %}
+    {% if start <= end %}
+      {{ start <= today <= end and today_weekday in blueprint.input.set1_days }}
+    {% else %}
+      {{ (today >= start or today <= end) and today_weekday in blueprint.input.set1_days }}
+    {% endif %}
   in_set1_off_window: >-
     {{ set1_active and (blueprint.input.set1_off_time <= current_time < blueprint.input.set1_on_time) }}
 
+  set2_start_date: >-
+    {{ (now().year|string) ~ '-' ~ blueprint.input.set2_start_md }}
+  set2_end_date: >-
+    {{ (now().year|string) ~ '-' ~ blueprint.input.set2_end_md }}
   set2_active: >-
-    {{ (today_date >= (strptime(blueprint.input.set2_start_date, '%Y-%m-%d').date()))
-        and (today_date <= (strptime(blueprint.input.set2_end_date, '%Y-%m-%d').date()))
-        and (today_weekday in blueprint.input.set2_days) }}
+    {% set today = now().date() %}
+    {% set start = strptime(set2_start_date, '%Y-%m-%d').date() %}
+    {% set end = strptime(set2_end_date, '%Y-%m-%d').date() %}
+    {% if start <= end %}
+      {{ start <= today <= end and today_weekday in blueprint.input.set2_days }}
+    {% else %}
+      {{ (today >= start or today <= end) and today_weekday in blueprint.input.set2_days }}
+    {% endif %}
   in_set2_off_window: >-
     {{ set2_active and (blueprint.input.set2_off_time <= current_time < blueprint.input.set2_on_time) }}
 
