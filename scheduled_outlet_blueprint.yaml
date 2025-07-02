@@ -1,5 +1,5 @@
 blueprint:
-  name: Scheduled Outlet with Month-Day Ranges + Recovery
+  name: Scheduled Outlet
   description: >
     Turns a switch ON and OFF based on two time schedules.
     Each schedule includes:
