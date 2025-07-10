@@ -1,7 +1,7 @@
 blueprint:
   name: Scheduled Outlet
   description: >
-    **Version: 1.0.3**
+    **Version: 1.0.4**
     
     Turns a switch ON and OFF based on two time schedules.
     Each schedule includes:
