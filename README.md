@@ -18,11 +18,11 @@ The outlet **defaults to ON**, and is only powered OFF during matching time/date
 
 Click this link to import the blueprint directly into Home Assistant:
 
-[![Import Blueprint](https://my.home-assistant.io/badges/blueprint_import.svg)](https://my.home-assistant.io/redirect/blueprint_import/?repository_url=https://raw.githubusercontent.com/Gruph/home-assistant-blueprints/main/blueprints/automation/Gruph/scheduled_outlet_blueprint.yaml)
+[![Import Blueprint](https://my.home-assistant.io/badges/blueprint_import.svg)](https://my.home-assistant.io/redirect/blueprint_import/?repository_url=https://raw.githubusercontent.com/tomc-ut/home-assistant-blueprints/main/blueprints/automation/tomc-ut/scheduled_outlet_blueprint.yaml)
 
 Or paste this URL in your browser:
 
-https://my.home-assistant.io/redirect/blueprint_import/?repository_url=https://raw.githubusercontent.com/Gruph/home-assistant-blueprints/main/blueprints/automation/Gruph/scheduled_outlet_blueprint.yaml
+https://my.home-assistant.io/redirect/blueprint_import/?repository_url=https://raw.githubusercontent.com/tomc-ut/home-assistant-blueprints/main/blueprints/automation/tomc-ut/scheduled_outlet_blueprint.yaml
 
 ---
 
