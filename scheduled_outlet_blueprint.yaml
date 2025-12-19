@@ -1,7 +1,7 @@
 blueprint:
   name: Scheduled Outlet
   description: >
-    **Version: 1.0.5**
+    **Version: 1.1.0**
     
     Turns a switch ON and OFF based on two time schedules.
     Each schedule includes:
@@ -12,6 +12,11 @@ blueprint:
     The outlet defaults to ON and will turn OFF only during active timer windows.
 
     On Home Assistant restart, after a 5-minute delay, it will check and restore the correct state.
+
+    Optional temperature guardrails:
+      - Provide a temperature sensor and choose whether to turn ON when above or below a threshold.
+      - Separate ON and OFF thresholds create a hysteresis window to reduce rapid toggling.
+      - Select Fahrenheit or Celsius; values auto-convert if the sensor reports the opposite unit.
   domain: automation
   input:
     outlet:
@@ -93,6 +98,58 @@ blueprint:
       selector:
         time:
 
+    # --- Optional Temperature Control ---
+    temperature_sensor:
+      name: Temperature Sensor (optional)
+      description: "Temperature sensor to guard the outlet. Leave empty to rely on schedule only."
+      default: null
+      selector:
+        entity:
+          domain: sensor
+          device_class: temperature
+    temperature_unit:
+      name: Temperature Unit
+      description: "Unit for the thresholds; the sensor reading will auto-convert if needed."
+      default: Fahrenheit
+      selector:
+        select:
+          options:
+            - label: Fahrenheit (°F)
+              value: Fahrenheit
+            - label: Celsius (°C)
+              value: Celsius
+    temperature_mode:
+      name: Temperature Mode
+      description: "Choose whether high or low temperatures should turn the outlet ON."
+      default: above
+      selector:
+        select:
+          options:
+            - label: Turn ON when temperature is ABOVE the ON threshold
+              value: above
+            - label: Turn ON when temperature is BELOW the ON threshold
+              value: below
+    temperature_on_threshold:
+      name: Temperature ON Threshold
+      description: "Temperature at which to turn ON (per the selected mode)."
+      default: 75
+      selector:
+        number:
+          min: -50
+          max: 150
+          step: 0.5
+          unit_of_measurement: "°"
+    temperature_off_threshold:
+      name: Temperature OFF Threshold
+      description: "Temperature at which to turn OFF (per the selected mode). Set to create a hysteresis gap."
+      default: 72
+      selector:
+        number:
+          min: -50
+          max: 150
+          step: 0.5
+          unit_of_measurement: "°"
+
 trigger:
   - platform: time
     at: !input set1_off_time
@@ -114,6 +171,10 @@ trigger:
     event: start
     id: startup
 
+  - platform: time_pattern
+    minutes: "/5"
+    id: periodic_check
+
 variables:
   set1_start_md: !input set1_start_md
   set1_end_md: !input set1_end_md
@@ -125,6 +186,12 @@ variables:
   set2_days: !input set2_days
   set2_off_time: !input set2_off_time
   set2_on_time: !input set2_on_time
+
+  temperature_sensor: !input temperature_sensor
+  temperature_unit: !input temperature_unit
+  temperature_mode: !input temperature_mode
+  temperature_on_threshold: !input temperature_on_threshold
+  temperature_off_threshold: !input temperature_off_threshold
 
   today_date: "{{ now().date() }}"
   today_weekday: "{{ now().strftime('%A') }}"
@@ -163,6 +230,62 @@ variables:
   in_set2_off_window: >-
     {{ set2_active and (set2_off_time <= current_time < set2_on_time) }}
 
+  schedule_off_window: >-
+    {{ in_set1_off_window or in_set2_off_window }}
+
+  use_temperature_control: >-
+    {{ temperature_sensor is not none and temperature_sensor != '' }}
+
+  temperature_value_raw: >-
+    {% if not use_temperature_control %}
+      {{ None }}
+    {% else %}
+      {{ states(temperature_sensor) | float(default=none) }}
+    {% endif %}
+  temperature_unit_sensor: >-
+    {% if not use_temperature_control %}
+      {{ None }}
+    {% else %}
+      {{ (state_attr(temperature_sensor, 'unit_of_measurement') or temperature_unit) | string }}
+    {% endif %}
+  current_temperature: >-
+    {% if not use_temperature_control %}
+      {{ None }}
+    {% else %}
+      {% if temperature_value_raw is string %}
+        {{ None }}
+      {% elif temperature_value_raw is number %}
+        {% set source = temperature_unit_sensor | lower %}
+        {% set target = temperature_unit | lower %}
+        {% if source in ['°f','degf','f','fahrenheit'] and target in ['c','°c','degc','celsius'] %}
+          {{ ((temperature_value_raw - 32) * 5 / 9) | round(2) }}
+        {% elif source in ['°c','degc','c','celsius'] and target in ['f','°f','degf','fahrenheit'] %}
+          {{ ((temperature_value_raw * 9 / 5) + 32) | round(2) }}
+        {% else %}
+          {{ temperature_value_raw }}
+        {% endif %}
+      {% else %}
+        {{ None }}
+      {% endif %}
+    {% endif %}
+
+  temp_on_condition: >-
+    {% if not use_temperature_control or current_temperature is none %}
+      false
+    {% elif temperature_mode == 'above' %}
+      {{ current_temperature >= temperature_on_threshold }}
+    {% else %}
+      {{ current_temperature <= temperature_on_threshold }}
+    {% endif %}
+  temp_off_condition: >-
+    {% if not use_temperature_control or current_temperature is none %}
+      false
+    {% elif temperature_mode == 'above' %}
+      {{ current_temperature <= temperature_off_threshold }}
+    {% else %}
+      {{ current_temperature >= temperature_off_threshold }}
+    {% endif %}
+
 action:
   - choose:
       - conditions:
@@ -173,18 +296,34 @@ action:
           - choose:
               - conditions:
                   - condition: template
-                    value_template: "{{ in_set1_off_window or in_set2_off_window }}"
+                    value_template: "{{ schedule_off_window }}"
                 sequence:
                   - service: switch.turn_off
                     target:
                       entity_id: !input outlet
               - conditions:
                   - condition: template
-                    value_template: "{{ not in_set1_off_window and not in_set2_off_window }}"
+                    value_template: "{{ not schedule_off_window }}"
                 sequence:
-                  - service: switch.turn_on
-                    target:
-                      entity_id: !input outlet
+                  - choose:
+                      - conditions:
+                          - condition: template
+                            value_template: "{{ temp_on_condition }}"
+                        sequence:
+                          - service: switch.turn_on
+                            target:
+                              entity_id: !input outlet
+                      - conditions:
+                          - condition: template
+                            value_template: "{{ temp_off_condition }}"
+                        sequence:
+                          - service: switch.turn_off
+                            target:
+                              entity_id: !input outlet
+                    default:
+                      - service: switch.turn_on
+                        target:
+                          entity_id: !input outlet
 
       - conditions:
           - condition: template
@@ -198,9 +337,32 @@ action:
           - condition: template
             value_template: "{{ trigger.id == 'set1_on' and set1_active }}"
         sequence:
-          - service: switch.turn_on
-            target:
-              entity_id: !input outlet
+          - choose:
+              - conditions:
+                  - condition: template
+                    value_template: "{{ schedule_off_window }}"
+                sequence:
+                  - service: switch.turn_off
+                    target:
+                      entity_id: !input outlet
+              - conditions:
+                  - condition: template
+                    value_template: "{{ temp_on_condition }}"
+                sequence:
+                  - service: switch.turn_on
+                    target:
+                      entity_id: !input outlet
+              - conditions:
+                  - condition: template
+                    value_template: "{{ temp_off_condition }}"
+                sequence:
+                  - service: switch.turn_off
+                    target:
+                      entity_id: !input outlet
+            default:
+              - service: switch.turn_on
+                target:
+                  entity_id: !input outlet
 
       - conditions:
           - condition: template
@@ -214,8 +376,58 @@ action:
           - condition: template
             value_template: "{{ trigger.id == 'set2_on' and set2_active }}"
         sequence:
-          - service: switch.turn_on
-            target:
-              entity_id: !input outlet
+          - choose:
+              - conditions:
+                  - condition: template
+                    value_template: "{{ schedule_off_window }}"
+                sequence:
+                  - service: switch.turn_off
+                    target:
+                      entity_id: !input outlet
+              - conditions:
+                  - condition: template
+                    value_template: "{{ temp_on_condition }}"
+                sequence:
+                  - service: switch.turn_on
+                    target:
+                      entity_id: !input outlet
+              - conditions:
+                  - condition: template
+                    value_template: "{{ temp_off_condition }}"
+                sequence:
+                  - service: switch.turn_off
+                    target:
+                      entity_id: !input outlet
+            default:
+              - service: switch.turn_on
+                target:
+                  entity_id: !input outlet
+
+      - conditions:
+          - condition: template
+            value_template: "{{ trigger.id == 'periodic_check' }}"
+        sequence:
+          - choose:
+              - conditions:
+                  - condition: template
+                    value_template: "{{ schedule_off_window }}"
+                sequence:
+                  - service: switch.turn_off
+                    target:
+                      entity_id: !input outlet
+              - conditions:
+                  - condition: template
+                    value_template: "{{ temp_on_condition }}"
+                sequence:
+                  - service: switch.turn_on
+                    target:
+                      entity_id: !input outlet
+              - conditions:
+                  - condition: template
+                    value_template: "{{ temp_off_condition }}"
+                sequence:
+                  - service: switch.turn_off
+                    target:
+                      entity_id: !input outlet
 
 mode: single
